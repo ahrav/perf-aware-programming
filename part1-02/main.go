@@ -50,7 +50,7 @@ func disassemble(reader *bytes.Reader) string {
 	b, err := reader.ReadByte()
 	for err == nil {
 		switch {
-		// Handle 'move reg/mem to/from reg' instructions.
+		// Handle mov reg/mem to/from reg.
 		case b>>2 == 0b00100010:
 			d := (b >> 1) & 1
 			w := b & 1
@@ -67,22 +67,27 @@ func disassemble(reader *bytes.Reader) string {
 			source := regs[w][(secondByte>>3)&0b111]
 
 			switch mod {
-			// Register to register.
-			case 0b11:
+			case 0b11: // Register to register.
 				destination = regs[w][rm]
-				// Memory to register, no displacement.
-			case 0b00:
+
+			case 0b00: // Memory to register, no displacement.
 				destination = addressingModes[mod][rm]
-				// Memory to register, 8-bit displacement and 16-bit displacement.
-			case 0b01, 0b10:
-				destination = formatAddress(baseAddresses[secondByte&0b111], dispFromReader(reader, mod))
+
+			case 0b01: // Memory to register, 8-bit displacement.
+				disp8, _ := reader.ReadByte()
+				destination = formatAddress(baseAddresses[secondByte&0b111], int16(disp8))
+
+			case 0b10: // Memory to register, 16-bit displacement.
+				lowDisp, _ := reader.ReadByte()
+				highDisp, _ := reader.ReadByte()
+				disp16 := int16(highDisp)<<8 | int16(lowDisp)
+				destination = formatAddress(baseAddresses[secondByte&0b111], disp16)
+
 			default:
-				out.WriteString("unsupported mod: ")
-				out.WriteByte('0' + mod)
-				out.WriteByte('\n')
+				log.Fatalf("unsupported mod: %b", mod)
 			}
 
-			// Swap if d == 1 to handle 'mov [memory], reg'.
+			// Swap if d = 1 to handle `mov [memory], reg`.
 			if d == 1 {
 				destination, source = source, destination
 			}
@@ -93,32 +98,35 @@ func disassemble(reader *bytes.Reader) string {
 			out.WriteString(source)
 			out.WriteByte('\n')
 
-			// Handle 'move immediate to reg/mem' instructions.
+			// Handle mov immediate to reg.
 		case b>>4 == 0b00001011:
 			w := (b >> 3) & 1
 			reg := b & 0b111
 
+			secondByte, err := reader.ReadByte()
+			if err != nil {
+				log.Fatalf("error reading byte: %v", err)
+			}
+
 			if w == 0 {
-				// 8-bit immediate value.
-				secondByte, _ := reader.ReadByte()
 				out.WriteString("mov ")
 				out.WriteString(regs[w][reg])
 				out.WriteString(", ")
-				// Convert to string representation using Itoa
 				out.WriteString(strconv.Itoa(int(int8(secondByte))))
 				out.WriteByte('\n')
 			} else {
-				// 16-bit immediate value.
-				secondByte, _ := reader.ReadByte()
-				thirdByte, _ := reader.ReadByte()
+				thirdByte, err := reader.ReadByte()
+				if err != nil {
+					log.Fatalf("error reading byte: %v", err)
+				}
 				value := int16(thirdByte)<<8 | int16(secondByte)
 				out.WriteString("mov ")
 				out.WriteString(regs[w][reg])
 				out.WriteString(", ")
-				// Convert to string representation using Itoa.
 				out.WriteString(strconv.Itoa(int(value)))
 				out.WriteByte('\n')
 			}
+
 		}
 
 		b, err = reader.ReadByte()
