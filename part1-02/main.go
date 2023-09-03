@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"strconv"
+	"strings"
 )
 
 func main() {
@@ -21,6 +23,7 @@ func main() {
 	fmt.Println(disassemble(reader))
 }
 
+// regs maps the register index to the string representation of the register.
 var regs = [][]string{
 	{"al", "cl", "dl", "bl", "ah", "ch", "dh", "bh"},
 	{"ax", "cx", "dx", "bx", "sp", "bp", "si", "di"},
@@ -37,7 +40,7 @@ var addressingModes = map[byte]map[byte]string{
 		0b110: "[bp]",
 		0b111: "[bx]",
 	},
-	// Displacement values for 0b01 and 0b10 are handled directly
+	// Displacement values for 0b01 and 0b10 are handled directly.
 }
 
 func disassemble(reader *bytes.Reader) string {
@@ -47,7 +50,7 @@ func disassemble(reader *bytes.Reader) string {
 	b, err := reader.ReadByte()
 	for err == nil {
 		switch {
-		// mov reg/mem to/from reg.
+		// Handle 'move reg/mem to/from reg' instructions.
 		case b>>2 == 0b00100010:
 			d := (b >> 1) & 1
 			w := b & 1
@@ -67,28 +70,19 @@ func disassemble(reader *bytes.Reader) string {
 			// Register to register.
 			case 0b11:
 				destination = regs[w][rm]
-
 				// Memory to register, no displacement.
 			case 0b00:
 				destination = addressingModes[mod][rm]
-
-				// Memory to register, 8-bit displacement.
-			case 0b01:
-				disp8, _ := reader.ReadByte()
-				destination = formatAddress(baseAddresses[secondByte&0b111], int16(disp8))
-
-			// Memory to register, 16-bit displacement.
-			case 0b10:
-				lowDisp, _ := reader.ReadByte()
-				highDisp, _ := reader.ReadByte()
-				disp16 := int16(highDisp)<<8 | int16(lowDisp)
-				destination = formatAddress(baseAddresses[secondByte&0b111], disp16)
-
+				// Memory to register, 8-bit displacement and 16-bit displacement.
+			case 0b01, 0b10:
+				destination = formatAddress(baseAddresses[secondByte&0b111], dispFromReader(reader, mod))
 			default:
-				log.Fatalf("unsupported mod: %b", mod)
+				out.WriteString("unsupported mod: ")
+				out.WriteByte('0' + mod)
+				out.WriteByte('\n')
 			}
 
-			// Swap if d = 1 to handle `mov [memory], reg`.
+			// Swap if d == 1 to handle 'mov [memory], reg'.
 			if d == 1 {
 				destination, source = source, destination
 			}
@@ -99,28 +93,30 @@ func disassemble(reader *bytes.Reader) string {
 			out.WriteString(source)
 			out.WriteByte('\n')
 
-		// mov immediate to reg.
+			// Handle 'move immediate to reg/mem' instructions.
 		case b>>4 == 0b00001011:
 			w := (b >> 3) & 1
 			reg := b & 0b111
 
-			secondByte, err := reader.ReadByte()
-			if err != nil {
-				log.Fatalf("error reading byte: %v", err)
-			}
-
 			if w == 0 {
-				// Cast to int8 for signed conversion
-				out.WriteString(fmt.Sprintf("mov %s, %d", regs[w][reg], int8(secondByte)))
+				// 8-bit immediate value.
+				secondByte, _ := reader.ReadByte()
+				out.WriteString("mov ")
+				out.WriteString(regs[w][reg])
+				out.WriteString(", ")
+				// Convert to string representation using Itoa
+				out.WriteString(strconv.Itoa(int(int8(secondByte))))
 				out.WriteByte('\n')
 			} else {
-				thirdByte, err := reader.ReadByte()
-				if err != nil {
-					log.Fatalf("error reading byte: %v", err)
-				}
-				// Convert two bytes to int16 for signed conversion
+				// 16-bit immediate value.
+				secondByte, _ := reader.ReadByte()
+				thirdByte, _ := reader.ReadByte()
 				value := int16(thirdByte)<<8 | int16(secondByte)
-				out.WriteString(fmt.Sprintf("mov %s, %d", regs[w][reg], value))
+				out.WriteString("mov ")
+				out.WriteString(regs[w][reg])
+				out.WriteString(", ")
+				// Convert to string representation using Itoa.
+				out.WriteString(strconv.Itoa(int(value)))
 				out.WriteByte('\n')
 			}
 		}
@@ -131,6 +127,7 @@ func disassemble(reader *bytes.Reader) string {
 	return out.String()
 }
 
+// baseAddresses maps the base address to the string representation of the address.
 var baseAddresses = map[byte]string{
 	0b000: "bx + si",
 	0b001: "bx + di",
@@ -142,11 +139,33 @@ var baseAddresses = map[byte]string{
 	0b111: "bx",
 }
 
+// formatAddress formats the address based on the base and displacement.
 func formatAddress(base string, disp int16) string {
-	if disp == 0 {
-		return "[" + base + "]"
-	} else if disp > 0 {
-		return fmt.Sprintf("[%s + %d]", base, disp)
+	var builder strings.Builder
+	builder.WriteByte('[')
+	builder.WriteString(base)
+	if disp > 0 {
+		builder.WriteString(" + ")
+		builder.WriteString(strconv.Itoa(int(disp)))
+	} else if disp < 0 {
+		builder.WriteString(" - ")
+		builder.WriteString(strconv.Itoa(int(-disp)))
 	}
-	return fmt.Sprintf("[%s - %d]", base, -disp)
+	builder.WriteByte(']')
+	return builder.String()
+}
+
+// dispFromReader reads the displacement value from the reader based on the addressing mode.
+func dispFromReader(reader *bytes.Reader, mod byte) int16 {
+	switch mod {
+	case 0b01:
+		disp8, _ := reader.ReadByte()
+		return int16(disp8)
+	case 0b10:
+		lowDisp, _ := reader.ReadByte()
+		highDisp, _ := reader.ReadByte()
+		return int16(highDisp)<<8 | int16(lowDisp)
+	default:
+		return 0
+	}
 }
