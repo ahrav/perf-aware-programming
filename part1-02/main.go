@@ -98,7 +98,7 @@ func disassemble(reader *bytes.Reader) string {
 			out.WriteString(source)
 			out.WriteByte('\n')
 
-			// Handle mov immediate to reg.
+			// Handle mov immediate to reg or memory.
 		case b>>4 == 0b00001011:
 			w := (b >> 3) & 1
 			reg := b & 0b111
