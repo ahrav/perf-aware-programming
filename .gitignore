@@ -8,6 +8,7 @@
 *.so
 *.dylib
 .idea
+.DS_Store
 
 # Test binary, built with `go test -c`
 *.test
@@ -20,3 +21,7 @@
 
 # Go workspace file
 go.work
+
+
+# Dont add large json files
+*.json
