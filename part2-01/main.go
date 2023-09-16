@@ -50,21 +50,18 @@ type Point struct {
 	X, Y float64
 }
 
+type result struct {
+	sum  float64
+	data string
+}
+
+const NumClusters int = 32
+
 // uniform generates a uniform distribution of haversine distances.
 func uniform(seed, numPoints int) {
 	// Set the random seed.
-	r := rand.New(rand.NewSource(int64(seed)))
-
-	binFile, err := os.Create("data.bin")
-	if err != nil {
-		log.Fatal(err)
-	}
+	binFile, outputFile := createOutputFiles()
 	defer binFile.Close()
-
-	outputFile, err := os.Create("data.json")
-	if err != nil {
-		log.Fatal(err)
-	}
 	defer outputFile.Close()
 
 	// Output file json format:
@@ -74,45 +71,65 @@ func uniform(seed, numPoints int) {
 	// ]}
 	outputFile.WriteString("{\"pairs\": [\n")
 
-	sum := 0.0
-	// Generate a uniform distribution of haversine distances.
-	for i := 0; i < numPoints; i++ {
-		p1 := Point{r.Float64()*360 - 180, r.Float64()*180 - 90}
-		p2 := Point{r.Float64()*360 - 180, r.Float64()*180 - 90}
-		dist := Haversine(p1.Y, p1.X, p2.Y, p2.X)
-		if err := binary.Write(binFile, binary.LittleEndian, dist); err != nil {
+	ptsPerCluster := numPoints / NumClusters
+
+	resultsChan := make(chan result, NumClusters)
+	wg := sync.WaitGroup{}
+
+	for idx := 0; idx < NumClusters; idx++ {
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			var localSum float64
+			var dataBuilder strings.Builder
+
+			// Unique random generator for goroutine
+			src := rand.NewSource(int64(seed) + int64(idx))
+			lr := rand.New(src)
+
+			for j := 0; j < ptsPerCluster; j++ {
+				p1 := Point{lr.Float64()*360 - 180, lr.Float64()*180 - 90}
+				p2 := Point{lr.Float64()*360 - 180, lr.Float64()*180 - 90}
+				dist := Haversine(p1.Y, p1.X, p2.Y, p2.X)
+				localSum += dist
+
+				dataString := pointToJSONString(p1, p2, dist)
+				dataBuilder.WriteString(dataString)
+
+				if j != ptsPerCluster-1 {
+					dataBuilder.WriteString(",\n")
+				}
+			}
+
+			resultsChan <- result{sum: localSum, data: dataBuilder.String()}
+		}(idx)
+	}
+
+	// Close resultsChan after all goroutines are done.
+	go func() {
+		wg.Wait()
+		close(resultsChan)
+	}()
+
+	outputFile.WriteString("{\"pairs\": [\n")
+	var globalSum float64
+	isFirstResult := true
+	for res := range resultsChan {
+		if err := binary.Write(binFile, binary.LittleEndian, res.sum); err != nil {
 			log.Fatal(err)
 		}
-		sum += dist
-
-		// For the iterations after the first, append a comma before the data.
-		if i > 0 {
-			outputFile.WriteString(",\n")
-		}
-
-		// Write the data (without a comma at the end)
-		dataString := "{\"X1\": " + strconv.FormatFloat(p1.X, 'f', -1, 64) +
-			", \"Y1\": " + strconv.FormatFloat(p1.Y, 'f', -1, 64) +
-			", \"X2\": " + strconv.FormatFloat(p2.X, 'f', -1, 64) +
-			", \"Y2\": " + strconv.FormatFloat(p2.Y, 'f', -1, 64) +
-			", \"distance\": " + strconv.FormatFloat(dist, 'f', -1, 64) + "}"
-		if _, err := outputFile.WriteString(dataString); err != nil {
-			log.Fatal(err)
-		}
+		globalSum += res.sum
+		writeJSONToFile(outputFile, isFirstResult, res.data)
+		isFirstResult = false
 	}
 	outputFile.WriteString("\n]}\n")
 
-	// Print the average distance.
-	log.Printf("Average distance: %f", sum/float64(numPoints))
-	log.Println("Number of points:", numPoints)
-	log.Println("Random seed:", seed)
+	printStats(globalSum, numPoints, seed)
 }
 
-// NumClusters is the number of clusters to generate.
-const (
-	NumClusters int     = 32
-	ClusterSize float64 = 32
-)
+// ClusterSize is the size of the cluster in degrees.
+// The cluster will be a square with sides of length ClusterSize.
+const ClusterSize float64 = 32
 
 type Cluster struct {
 	Xmin, Xmax float64
@@ -140,16 +157,8 @@ func clustered(seed, numPoints int) {
 		}
 	}
 
-	binFile, err := os.Create("data.bin")
-	if err != nil {
-		log.Fatal(err)
-	}
+	binFile, outputFile := createOutputFiles()
 	defer binFile.Close()
-
-	outputFile, err := os.Create("data.json")
-	if err != nil {
-		log.Fatal(err)
-	}
 	defer outputFile.Close()
 	// Output file json format:
 	// { "pairs": [
@@ -157,11 +166,6 @@ func clustered(seed, numPoints int) {
 	// ...
 	// ]}
 	outputFile.WriteString("{\"pairs\": [\n")
-
-	type result struct {
-		sum  float64
-		data string
-	}
 
 	resultsChan := make(chan result, len(clusters))
 	wg := sync.WaitGroup{}
@@ -183,11 +187,7 @@ func clustered(seed, numPoints int) {
 				dist := Haversine(p1.Y, p1.X, p2.Y, p2.X)
 				localSum += dist
 
-				dataString := "{\"X1\": " + strconv.FormatFloat(p1.X, 'f', -1, 64) +
-					", \"Y1\": " + strconv.FormatFloat(p1.Y, 'f', -1, 64) +
-					", \"X2\": " + strconv.FormatFloat(p2.X, 'f', -1, 64) +
-					", \"Y2\": " + strconv.FormatFloat(p2.Y, 'f', -1, 64) + "}"
-
+				dataString := pointToJSONString(p1, p2, dist)
 				dataBuilder.WriteString(dataString)
 				// Add comma if not last cluster or not last point within cluster.
 				// Only add a comma if it's not the last point within the cluster
@@ -214,25 +214,50 @@ func clustered(seed, numPoints int) {
 			log.Fatal(err)
 		}
 		globalSum += res.sum
-
-		if firstResult {
-			firstResult = false
-		} else {
-			outputFile.WriteString(",\n") // Prefix with comma if not the first result.
-		}
-
-		if _, err := outputFile.WriteString(res.data); err != nil {
-			log.Fatal(err)
-		}
+		writeJSONToFile(outputFile, firstResult, res.data)
 	}
 	outputFile.WriteString("\n]}\n")
 
 	// Print the average distance.
-	log.Printf("Average distance: %f", globalSum/float64(numPoints))
+	printStats(globalSum, numPoints, seed)
+	return
+}
+
+func createOutputFiles() (*os.File, *os.File) {
+	binFile, err := os.Create("data.bin")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	outputFile, err := os.Create("data.json")
+	if err != nil {
+		log.Fatal(err)
+	}
+	return binFile, outputFile
+}
+
+// Assuming Point struct has X and Y fields.
+func pointToJSONString(p1, p2 Point, distance float64) string {
+	return "{\"X1\": " + strconv.FormatFloat(p1.X, 'f', -1, 64) +
+		", \"Y1\": " + strconv.FormatFloat(p1.Y, 'f', -1, 64) +
+		", \"X2\": " + strconv.FormatFloat(p2.X, 'f', -1, 64) +
+		", \"Y2\": " + strconv.FormatFloat(p2.Y, 'f', -1, 64) +
+		", \"distance\": " + strconv.FormatFloat(distance, 'f', -1, 64) + "}"
+}
+
+func writeJSONToFile(outputFile *os.File, isFirstData bool, data string) {
+	if !isFirstData {
+		outputFile.WriteString(",\n")
+	}
+	if _, err := outputFile.WriteString(data); err != nil {
+		log.Fatal(err)
+	}
+}
+
+func printStats(sum float64, numPoints, seed int) {
+	log.Printf("Average distance: %f", sum/float64(numPoints))
 	log.Println("Number of points:", numPoints)
 	log.Println("Random seed:", seed)
-
-	return
 }
 
 func clusteredSerial(seed, numPoints int) {
