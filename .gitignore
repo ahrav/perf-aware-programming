@@ -25,3 +25,6 @@ go.work
 
 # Dont add large json files
 *.json
+
+# Ignore binary.
+generate
