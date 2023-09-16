@@ -23,12 +23,6 @@ func main() {
 		log.Fatal("usage requires 4 arguments: <main> <uniform/clustered> <random-seed> <num-points>")
 	}
 
-	// Using the first argument, determine whether to generate uniform or clustered data.
-	// Using the second argument, set the random seed.
-	// Using the third argument, set the number of points to generate.
-	// Generate a json file with the generated data.
-
-	// Calculate the number of points per cluster.
 	spread := os.Args[1]
 	if spread != string(Uniform) && spread != string(Clustered) {
 		log.Fatal("usage requires 4 arguments: <main> <uniform/clustered> <random-seed> <num-points>")
