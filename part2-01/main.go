@@ -208,13 +208,14 @@ func clustered(seed, numPoints int) {
 
 	// Read from resultsChan.
 	var globalSum float64
-	firstResult := true
+	isFirstResult := true
 	for res := range resultsChan {
 		if err := binary.Write(binFile, binary.LittleEndian, res.sum); err != nil {
 			log.Fatal(err)
 		}
 		globalSum += res.sum
-		writeJSONToFile(outputFile, firstResult, res.data)
+		writeJSONToFile(outputFile, isFirstResult, res.data)
+		isFirstResult = false
 	}
 	outputFile.WriteString("\n]}\n")
 
@@ -241,8 +242,7 @@ func pointToJSONString(p1, p2 Point, distance float64) string {
 	return "{\"X1\": " + strconv.FormatFloat(p1.X, 'f', -1, 64) +
 		", \"Y1\": " + strconv.FormatFloat(p1.Y, 'f', -1, 64) +
 		", \"X2\": " + strconv.FormatFloat(p2.X, 'f', -1, 64) +
-		", \"Y2\": " + strconv.FormatFloat(p2.Y, 'f', -1, 64) +
-		", \"distance\": " + strconv.FormatFloat(distance, 'f', -1, 64) + "}"
+		", \"Y2\": " + strconv.FormatFloat(p2.Y, 'f', -1, 64) + "}"
 }
 
 func writeJSONToFile(outputFile *os.File, isFirstData bool, data string) {
