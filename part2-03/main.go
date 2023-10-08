@@ -1,9 +1,11 @@
 package main
 
 import (
+	"fmt"
 	"log"
 	"math"
 	"os"
+	"time"
 
 	"github.com/goccy/go-json"
 )
@@ -14,12 +16,17 @@ func main() {
 	}
 
 	filename := os.Args[1]
+	start := time.Now()
 	pairs, err := readGeoPairsFromFile(filename)
+	fmt.Printf("readGeoPairsFromFile took %s\n", time.Since(start))
 	if err != nil {
 		log.Fatal(err)
 	}
 
+	startCalc := time.Now()
 	log.Printf("Average distance: %f\n", calcHaversineDistanceAvg(pairs))
+	fmt.Printf("calcHaversineDistanceAvg took %s\n", time.Since(startCalc))
+	fmt.Printf("Total time: %s\n", time.Since(start))
 
 }
 
