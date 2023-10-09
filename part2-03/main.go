@@ -141,7 +141,7 @@ const expectedGeoPairs = 10_000_000 // Expected number of GeoPairs
 
 func readGeoPairsFromFile(file *os.File) ([]GeoPair, error) {
 	var container GeoPairsContainer
-	container.Pairs = make([]GeoPair, 0, expectedGeoPairs) // Pre-allocate using the constant
+	container.Pairs = make([]GeoPair, 0, expectedGeoPairs)
 
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&container); err != nil {
