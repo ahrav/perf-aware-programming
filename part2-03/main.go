@@ -11,23 +11,31 @@ import (
 )
 
 func main() {
-	if len(os.Args) != 2 {
-		log.Fatal("usage requires 2 arguments: <main> <json-file>")
+	if len(os.Args) < 2 {
+		log.Fatal("usage requires at least 2 arguments: <main> <json-file> <optional: profile>")
 	}
 
 	filename := os.Args[1]
+	var shouldProfile bool
+	if len(os.Args) > 2 {
+		shouldProfile = os.Args[2] == "profile"
+	}
 	start := time.Now()
 	pairs, err := readGeoPairsFromFile(filename)
-	fmt.Printf("readGeoPairsFromFile took %s\n", time.Since(start))
+	if shouldProfile {
+
+		fmt.Printf("readGeoPairsFromFile took %s\n", time.Since(start))
+	}
 	if err != nil {
 		log.Fatal(err)
 	}
 
 	startCalc := time.Now()
-	log.Printf("Average distance: %f\n", calcHaversineDistanceAvg(pairs))
-	fmt.Printf("calcHaversineDistanceAvg took %s\n", time.Since(startCalc))
-	fmt.Printf("Total time: %s\n", time.Since(start))
-
+	fmt.Printf("Average distance: %f\n", calcHaversineDistanceAvg(pairs))
+	if shouldProfile {
+		fmt.Printf("calcHaversineDistanceAvg took %s\n", time.Since(startCalc))
+		fmt.Printf("Total time: %s\n", time.Since(start))
+	}
 }
 
 // GeoPair represents a pair of points in 2D space.
