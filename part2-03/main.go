@@ -17,9 +17,18 @@ func main() {
 		log.Fatal("usage requires at least 2 arguments: <main> <json-file> <optional: profile>")
 	}
 
-	var shouldProfile bool
+	var (
+		shouldProfile bool
+		shouldTest    bool
+	)
 	if len(os.Args) > 2 {
 		shouldProfile = os.Args[2] == "profile"
+		shouldTest = os.Args[2] == "test"
+	}
+
+	if shouldTest {
+		repetitionTester(os.Args[1])
+		return
 	}
 
 	filename := os.Args[1]
@@ -55,6 +64,64 @@ func main() {
 		fmt.Printf("calcHaversineDistanceAvg took %s throughput %f MB/s\n", dur, throughput)
 		fmt.Printf("Total time: %s\n", time.Since(start))
 	}
+}
+
+const testDuration = 10 * time.Second
+
+func repetitionTester(filename string) {
+	file, err := os.Open(filename)
+	if err != nil {
+		fmt.Printf("Error opening file: %s\n", err)
+		return
+	}
+	defer file.Close()
+
+	var (
+		minTime, maxTime time.Duration
+		iterationCount   int
+	)
+	resetTimer := true
+	overallStart := time.Now()
+	deadline := overallStart.Add(testDuration)
+
+	for resetTimer || time.Now().Before(deadline) {
+		resetTimer = false
+		iterationCount++
+
+		// Reset file position.
+		file.Seek(0, 0)
+
+		// Measure the time taken to execute readGeoPairsFromFile.
+		start := time.Now()
+		_, err := readGeoPairsFromFile(file)
+		duration := time.Since(start)
+
+		if err != nil {
+			fmt.Printf("Error in iteration %d: %s\n", iterationCount, err)
+			return
+		}
+
+		// Update min and max.
+		if iterationCount == 1 || duration < minTime {
+			minTime = duration
+			deadline = time.Now().Add(testDuration) // Reset timer if new minimum found
+			resetTimer = true
+		}
+		if iterationCount == 1 || duration > maxTime {
+			maxTime = duration
+		}
+	}
+
+	// Get the file's size.
+	info, err := os.Stat(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileSize := info.Size()
+
+	fmt.Printf("Total iterations: %d\n", iterationCount)
+	fmt.Printf("Minimum execution time: %v throughputs %f MB/s\n", minTime, float64(fileSize)/minTime.Seconds()/mb)
+	fmt.Printf("Maximum execution time: %v throughputs %f MB/s\n", maxTime, float64(fileSize)/maxTime.Seconds()/mb)
 }
 
 // GeoPair represents a pair of points in 2D space.
