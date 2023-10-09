@@ -70,8 +70,12 @@ type GeoPairsContainer struct {
 	Pairs []GeoPair `json:"pairs"`
 }
 
+const expectedGeoPairs = 10_000_000 // Expected number of GeoPairs
+
 func readGeoPairsFromFile(file *os.File) ([]GeoPair, error) {
 	var container GeoPairsContainer
+	container.Pairs = make([]GeoPair, 0, expectedGeoPairs) // Pre-allocate using the constant
+
 	decoder := json.NewDecoder(file)
 	if err := decoder.Decode(&container); err != nil {
 		return nil, err
@@ -88,16 +92,6 @@ func calcHaversineDistanceAvg(pairs []GeoPair) float64 {
 	return sum / float64(len(pairs))
 }
 
-// Square returns the square of the input.
-func Square(x float64) float64 {
-	return math.Pow(x, 2)
-}
-
-// Radians converts degrees to radians.
-func Radians(d float64) float64 {
-	return d * math.Pi / 180
-}
-
 // EarthRadius is the radius of the earth in kilometers.
 const EarthRadius = 6372.8 // km
 
@@ -111,4 +105,16 @@ func Haversine(lat1, lon1, lat2, lon2 float64) float64 {
 	a := Square(math.Sin(dLat/2)) + math.Cos(lat1)*math.Cos(lat2)*Square(math.Sin(dLon/2))
 	c := 2 * math.Asin(math.Sqrt(a))
 	return EarthRadius * c
+}
+
+// Square returns the square of the input.
+func Square(x float64) float64 {
+	return x * x
+}
+
+const reciprocal180 = 1.0 / 180
+
+// Radians converts degrees to radians.
+func Radians(d float64) float64 {
+	return d * math.Pi * reciprocal180
 }
