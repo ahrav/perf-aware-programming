@@ -10,21 +10,38 @@ import (
 	"github.com/goccy/go-json"
 )
 
+const mb = 1024 * 1024
+
 func main() {
 	if len(os.Args) < 2 {
 		log.Fatal("usage requires at least 2 arguments: <main> <json-file> <optional: profile>")
 	}
 
-	filename := os.Args[1]
 	var shouldProfile bool
 	if len(os.Args) > 2 {
 		shouldProfile = os.Args[2] == "profile"
 	}
-	start := time.Now()
-	pairs, err := readGeoPairsFromFile(filename)
-	if shouldProfile {
 
-		fmt.Printf("readGeoPairsFromFile took %s\n", time.Since(start))
+	filename := os.Args[1]
+	file, err := os.Open(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	defer file.Close()
+
+	// Get the file's size.
+	info, err := os.Stat(filename)
+	if err != nil {
+		log.Fatal(err)
+	}
+	fileSize := info.Size()
+
+	start := time.Now()
+	pairs, err := readGeoPairsFromFile(file)
+	if shouldProfile {
+		dur := time.Since(start)
+		throughput := float64(fileSize) / dur.Seconds() / mb
+		fmt.Printf("readGeoPairsFromFile took %s throughput %f MB/s\n", dur, throughput)
 	}
 	if err != nil {
 		log.Fatal(err)
@@ -33,7 +50,9 @@ func main() {
 	startCalc := time.Now()
 	fmt.Printf("Average distance: %f\n", calcHaversineDistanceAvg(pairs))
 	if shouldProfile {
-		fmt.Printf("calcHaversineDistanceAvg took %s\n", time.Since(startCalc))
+		dur := time.Since(startCalc)
+		throughput := float64(fileSize) / dur.Seconds() / mb
+		fmt.Printf("calcHaversineDistanceAvg took %s throughput %f MB/s\n", dur, throughput)
 		fmt.Printf("Total time: %s\n", time.Since(start))
 	}
 }
@@ -51,16 +70,10 @@ type GeoPairsContainer struct {
 	Pairs []GeoPair `json:"pairs"`
 }
 
-func readGeoPairsFromFile(filename string) ([]GeoPair, error) {
-	file, err := os.Open(filename)
-	if err != nil {
-		return nil, err
-	}
-	defer file.Close()
-
+func readGeoPairsFromFile(file *os.File) ([]GeoPair, error) {
 	var container GeoPairsContainer
 	decoder := json.NewDecoder(file)
-	if err = decoder.Decode(&container); err != nil {
+	if err := decoder.Decode(&container); err != nil {
 		return nil, err
 	}
 
