@@ -1,10 +1,14 @@
 package main
 
 import (
+	"bytes"
 	"fmt"
 	"log"
 	"math"
 	"os"
+	"os/exec"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/goccy/go-json"
@@ -69,6 +73,7 @@ func main() {
 const testDuration = 10 * time.Second
 
 func repetitionTester(filename string) {
+
 	file, err := os.Open(filename)
 	if err != nil {
 		fmt.Printf("Error opening file: %s\n", err)
@@ -122,6 +127,36 @@ func repetitionTester(filename string) {
 	fmt.Printf("Total iterations: %d\n", iterationCount)
 	fmt.Printf("Minimum execution time: %v throughputs %f MB/s\n", minTime, float64(fileSize)/minTime.Seconds()/mb)
 	fmt.Printf("Maximum execution time: %v throughputs %f MB/s\n", maxTime, float64(fileSize)/maxTime.Seconds()/mb)
+}
+
+func getPageFaults(pid int) (int, error) {
+	// Run 'ps' command to get page faults (majflt/minflt).
+	cmd := exec.Command("ps", "-o", "majflt,minflt", "-p", strconv.Itoa(pid))
+	var out bytes.Buffer
+	cmd.Stdout = &out
+	err := cmd.Run()
+	if err != nil {
+		return 0, err
+	}
+
+	// Parse the output.
+	lines := strings.Split(out.String(), "\n")
+	if len(lines) < 2 {
+		return 0, fmt.Errorf("unexpected output from ps command")
+	}
+
+	fields := strings.Fields(lines[1])
+	if len(fields) != 2 {
+		return 0, fmt.Errorf("unexpected field count from ps command")
+	}
+
+	// Assuming you want minor page faults, but you can return major (fields[0]) if needed.
+	pageFaults, err := strconv.Atoi(fields[1])
+	if err != nil {
+		return 0, err
+	}
+
+	return pageFaults, nil
 }
 
 // GeoPair represents a pair of points in 2D space.
