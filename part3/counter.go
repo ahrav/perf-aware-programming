@@ -16,10 +16,12 @@ func MovAllBytes(buffer []byte, count uint64) {
 	C.MOVAllBytesASM_CWrapper(cBuffer, C.uint64_t(count))
 }
 
+// TODO: This is not working correctly.
 func NopAllBytes(count uint64) {
 	C.NOPAllBytesASM_CWrapper(C.uint64_t(count))
 }
 
+// TODO: This is not working correctly.
 func CmpAllBytes(count uint64) {
 	C.CMPAllBytesASM_CWrapper(C.uint64_t(count))
 }
